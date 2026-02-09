@@ -20,6 +20,7 @@ interface RunResults {
     sha: string
     class_name: string
     image_path?: string
+    image_url?: string
   }>
   tables?: Array<{
     sha: string
@@ -58,6 +59,8 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
   const resultsFetched = useRef(false)
   // Store the manifest for blob mode (used by CSV/image components)
   const [manifest, setManifest] = useState<BlobManifest | null>(null)
+  // Retry counter — incrementing this re-triggers the fetch effect
+  const [retryCount, setRetryCount] = useState(0)
 
   // Derive stable status string to avoid object-reference churn in useEffect deps
   const jobStatus = job?.status || ''
@@ -68,8 +71,22 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (resultsFetched.current) return
 
     const isCompleted = isTerminal && (jobStatus === "completed" || jobStatus === ("classification_complete" as string))
-    if (!isCompleted) {
+
+    // For non-completed terminal states (failed, cancelled), stop loading
+    if (isTerminal && !isCompleted) {
       setLoading(false)
+      return
+    }
+
+    // Not yet terminal — keep loading=true so the "Loading results..." view
+    // shows immediately when isTerminal flips, instead of a brief empty flash
+    if (!isCompleted) {
+      return
+    }
+
+    // In blob mode, require manifestUrl to fetch results
+    if (isBlobMode() && !manifestUrl) {
+      log.debug('Blob mode: no manifest_url available yet')
       return
     }
 
@@ -92,15 +109,16 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
         }
       } catch (err) {
         log.error('Failed to fetch results', { error: err instanceof Error ? err.message : String(err) })
-        // Allow retry on error
+        // Allow retry — schedule a re-trigger after a short delay
         resultsFetched.current = false
+        setTimeout(() => setRetryCount(c => c + 1), 3000)
       } finally {
         setLoading(false)
       }
     }
 
     fetchResults()
-  }, [isTerminal, jobStatus, runId, manifestUrl])
+  }, [isTerminal, jobStatus, runId, manifestUrl, retryCount])
 
   // Show loading while running
   if (!isTerminal) {
@@ -252,34 +270,37 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
         <>
           {activeTab === "figures" && (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {results?.figures?.map((fig) => (
-                <div
-                  key={fig.sha}
-                  className="bg-white rounded-lg border border-gray-200 overflow-hidden"
-                >
-                  {fig.image_path ? (
-                    <img
-                      src={fig.image_path}
-                      alt={fig.class_name}
-                      className="w-full h-48 object-contain bg-gray-50"
-                    />
-                  ) : (
-                    <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">
-                      No image
-                    </div>
-                  )}
-                  <div className="p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-900 capitalize">
-                        {fig.class_name}
-                      </span>
-                      <span className="text-xs text-gray-500 font-mono">
-                        {fig.sha.slice(0, 6)}
-                      </span>
+              {results?.figures?.map((fig) => {
+                const imgSrc = fig.image_path || fig.image_url
+                return (
+                  <div
+                    key={fig.sha}
+                    className="bg-white rounded-lg border border-gray-200 overflow-hidden"
+                  >
+                    {imgSrc ? (
+                      <img
+                        src={imgSrc}
+                        alt={fig.class_name || fig.sha}
+                        className="w-full h-48 object-contain bg-gray-50"
+                      />
+                    ) : (
+                      <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400">
+                        No image
+                      </div>
+                    )}
+                    <div className="p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-900 capitalize">
+                          {fig.class_name || 'figure'}
+                        </span>
+                        <span className="text-xs text-gray-500 font-mono">
+                          {fig.sha.slice(0, 6)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {(!results?.figures?.length) && (
                 <div className="col-span-full text-center py-12 text-gray-500">
                   No figures found

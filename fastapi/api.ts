@@ -1,23 +1,17 @@
 /**
  * API client for communicating with FastAPI backend.
  *
- * IMPORTANT: This client uses TWO API path patterns:
- * - /api/jobs/* (v4) — for job status, results, classification (Redis-backed)
- * - /api/v1/*  (legacy) — for storage, pipeline, filesystem-based operations
- *
- * All v4 job operations go through jobsRequest() → /api/jobs/{id}/...
- * Legacy operations go through request() → /api/v1/...
+ * All endpoints live under /api/* (v4 architecture):
+ * - /api/jobs/*    — job status, results, classification, images, download
+ * - /api/storage/* — file upload/list/delete (local dev)
  *
  * BLOB MODE: When NEXT_PUBLIC_STORAGE_MODE=blob, results and CSV data
  * are fetched directly from Vercel Blob URLs (via manifest_url from Jobs API).
- * Legacy /runs/* endpoints are NOT used in blob mode.
  */
 
 import type {
   RunListItem,
   RunStatus,
-  RunManifest,
-  PipelineRunResponse,
   UploadResponse,
   ClassificationQueue,
   ClassificationSubmitResponse,
@@ -39,7 +33,11 @@ export function isBlobMode(): boolean {
     && process.env.NEXT_PUBLIC_STORAGE_MODE === 'blob'
 }
 
-/** Normalize manifest file keys (Windows backslashes → forward slashes) */
+/**
+ * Normalize manifest file keys (Windows backslashes → forward slashes).
+ * Safety net: the Celery worker now uses .as_posix() for all paths,
+ * but we keep this for backward compatibility with old manifests.
+ */
 function normalizeManifestKeys(files: Record<string, string>): Record<string, string> {
   const normalized: Record<string, string> = {}
   for (const [key, value] of Object.entries(files)) {
@@ -178,14 +176,13 @@ class ApiClient {
   }
 
   /**
-   * Legacy request method — calls /api/v1/* endpoints (filesystem-based).
-   * Used for storage, pipeline, and legacy run operations.
+   * Generic request method — calls any endpoint on the FastAPI backend.
    */
   private async request<T>(
-    endpoint: string,
+    path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}/api/v1${endpoint}`
+    const url = `${this.baseUrl}${path}`
 
     const response = await fetch(url, {
       ...options,
@@ -211,38 +208,20 @@ class ApiClient {
     return response.json() as Promise<T>
   }
 
-  /**
-   * v4 Jobs API request — calls /api/jobs/* endpoints (Redis-backed).
-   * Used for job status, results, classification in v4 architecture.
-   */
+  /** Convenience: call /api/jobs/* endpoints */
   private async jobsRequest<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}/api/jobs${endpoint}`
+    return this.request<T>(`/api/jobs${endpoint}`, options)
+  }
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: `HTTP ${response.status}`,
-        detail: response.statusText,
-      }))
-      throw new ApiRequestError(error.error, error.detail)
-    }
-
-    // Handle empty responses
-    if (response.status === 204) {
-      return undefined as T
-    }
-
-    return response.json() as Promise<T>
+  /** Convenience: call /api/storage/* endpoints */
+  private async storageRequest<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    return this.request<T>(`/api/storage${endpoint}`, options)
   }
 
   // === Runs ===
@@ -257,13 +236,8 @@ class ApiClient {
     return this.jobsRequest<RunStatus>(`/${runId}`)
   }
 
-  async getRunManifest(runId: string): Promise<RunManifest> {
-    // Legacy endpoint — manifest lives at /api/v1/runs/{id}/manifest
-    return this.request<RunManifest>(`/runs/${runId}/manifest`)
-  }
-
   async deleteRun(runId: string): Promise<void> {
-    return this.request<void>(`/runs/${runId}`, { method: 'DELETE' })
+    return this.jobsRequest<void>(`/${runId}`, { method: 'DELETE' })
   }
 
   async getRunCsv(runId: string, manifestUrl?: string | null): Promise<{
@@ -275,26 +249,14 @@ class ApiClient {
     if (isBlobMode() && manifestUrl) {
       return this.getRunCsvFromBlob(manifestUrl)
     }
-    // Legacy: Call FastAPI endpoint (local filesystem)
-    return this.request(`/runs/${runId}/csv`)
+    // Local dev: Call FastAPI Jobs endpoint
+    return this.jobsRequest(`/${runId}/csv`)
   }
 
-  // === Pipeline ===
+  // === Jobs ===
 
-  async runPipeline(filename?: string): Promise<PipelineRunResponse> {
-    return this.request<PipelineRunResponse>('/pipeline/run', {
-      method: 'POST',
-      body: JSON.stringify({ filename }),
-    })
-  }
-
-  async cancelPipeline(runId: string): Promise<{ run_id: string; status: string; message: string }> {
-    // v4: Use Jobs API for cancellation
+  async cancelJob(runId: string): Promise<{ run_id: string; status: string; message: string }> {
     return this.jobsRequest(`/${runId}/cancel`, { method: 'POST' })
-  }
-
-  async getPipelineProgress(runId: string): Promise<Record<string, unknown>> {
-    return this.request(`/pipeline/${runId}/progress`)
   }
 
   // === Storage ===
@@ -303,7 +265,7 @@ class ApiClient {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await fetch(`${this.baseUrl}/api/v1/storage/upload`, {
+    const response = await fetch(`${this.baseUrl}/api/storage/upload`, {
       method: 'POST',
       body: formData,
     })
@@ -320,21 +282,22 @@ class ApiClient {
   }
 
   async listFiles(): Promise<Array<{ name: string; size_bytes: number; modified: string }>> {
-    return this.request('/storage/files')
+    return this.storageRequest('/files')
   }
 
   async deleteFile(filename: string): Promise<void> {
-    return this.request<void>(`/storage/files/${encodeURIComponent(filename)}`, {
+    return this.storageRequest<void>(`/files/${encodeURIComponent(filename)}`, {
       method: 'DELETE',
     })
   }
 
+  /** Get image URL — v4 serves images via /api/jobs/{id}/images/{sha} */
   getImageUrl(runId: string, sha: string): string {
-    return `${this.baseUrl}/api/v1/storage/runs/${runId}/images/${sha}`
+    return `${this.baseUrl}/api/jobs/${runId}/images/${sha}`
   }
 
   getCropImageUrl(runId: string, sha: string): string {
-    return `${this.baseUrl}/api/v1/runs/${runId}/classification/crops/${sha}/image`
+    return `${this.baseUrl}/api/jobs/${runId}/images/${sha}`
   }
 
   /**
@@ -351,13 +314,11 @@ class ApiClient {
   }
 
   getCropImageDataUrl(runId: string, sha: string): string {
-    // Legacy endpoint — no v4 equivalent for data URLs
-    return `${this.baseUrl}/api/v1/runs/${runId}/classification/crops/${sha}/image/dataurl`
+    return `${this.baseUrl}/api/jobs/${runId}/images/${sha}`
   }
 
   getFigureImageUrl(runId: string, sha: string): string {
-    // Legacy endpoint — figures served from filesystem
-    return `${this.baseUrl}/api/v1/runs/${runId}/figure/${sha}`
+    return `${this.baseUrl}/api/jobs/${runId}/images/${sha}`
   }
 
   // === Classification ===
@@ -368,8 +329,7 @@ class ApiClient {
   }
 
   async getClassificationStats(runId: string): Promise<{ total: number; reviewed: number; by_classification: Record<string, number> }> {
-    // Legacy endpoint — stats only exists at /api/v1/runs/
-    return this.request(`/runs/${runId}/classification/stats`)
+    return this.jobsRequest(`/${runId}/classification/stats`)
   }
 
   async submitClassifications(
@@ -396,37 +356,7 @@ class ApiClient {
     )
   }
 
-  async batchSubmitClassifications(runId: string, corrections: Record<string, string>): Promise<void> {
-    return this.request<void>(`/runs/${runId}/classification/batch`, {
-      method: 'POST',
-      body: JSON.stringify(corrections),
-    })
-  }
 
-  async submitSingleClassification(
-    runId: string,
-    sha: string,
-    classification: string
-  ): Promise<{ sha: string; classification: string; timestamp: string }> {
-    return this.request(
-      `/runs/${runId}/classification/crops/${sha}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ classification }),
-      }
-    )
-  }
-
-  // === SSE Streaming (DEPRECATED - v4 uses polling) ===
-  // DO NOT USE - Kept for backward compatibility only
-  // Use useJobStatus hook instead for status updates
-
-  /** @deprecated Use useJobStatus hook instead - v4 uses polling, not SSE */
-  createProgressStream(runId: string): EventSource {
-    // SSE is not supported in v4 architecture
-    throw new Error('createProgressStream uses SSE which is not supported in v4. Use useJobStatus hook instead.')
-    return new EventSource(`${this.baseUrl}/api/v1/runs/${runId}/stream`)
-  }
 
   // === Legacy Methods (for backward compatibility) ===
 
@@ -444,10 +374,9 @@ class ApiClient {
     }
   }
 
-  async startPipeline(_docId: string, docPath: string): Promise<PipelineRunResponse> {
-    // Extract filename from docPath
-    const filename = docPath.split('/').pop() || docPath
-    return this.runPipeline(filename)
+  /** @deprecated Use cancelJob instead */
+  async cancelPipeline(runId: string): Promise<{ run_id: string; status: string; message: string }> {
+    return this.cancelJob(runId)
   }
 
   async getClassificationStatus(runId: string): Promise<ClassificationRequest> {
@@ -492,7 +421,7 @@ class ApiClient {
       return this.getResultsFromBlob(manifestUrl)
     }
 
-    // v4: Call the Jobs API results endpoint (Redis-backed, supports blob manifest)
+    // v4: Call the Jobs API results endpoint
     const results = await this.jobsRequest<{
       run_id: string
       doc_id: string
@@ -503,6 +432,7 @@ class ApiClient {
         class_name: string
         confidence?: number
         image_path?: string
+        image_url?: string  // FastAPI may return blob URL here instead of image_path
         page_id?: string
         bbox?: number[]
       }>
@@ -527,7 +457,12 @@ class ApiClient {
       status: results.status,
       results: {},
       output_dir: '',
-      figures: results.figures,
+      // Merge image_url into image_path for consistent frontend usage.
+      // FastAPI returns both fields; prefer image_path but fall back to image_url.
+      figures: results.figures?.map(fig => ({
+        ...fig,
+        image_path: fig.image_path || fig.image_url || undefined,
+      })),
       pages: results.pages,
       tables: results.tables,
       markdown: results.markdown,

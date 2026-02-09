@@ -107,7 +107,9 @@ export function useJobStatus(
         throw new Error(`Failed to fetch job: ${response.statusText}`);
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data: JobPublic = await response.json();
+
       log.debug('Job data received', { status: data.status, progress: data.progress_percent });
       setJob(data);
 

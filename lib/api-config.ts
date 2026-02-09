@@ -19,9 +19,8 @@
  * - /api/health - Next.js health check
  * 
  * All other API calls go directly to FastAPI:
- * - /api/jobs/* - Job management (create, poll, cancel)
- * - /runs/* - Legacy run management
- * - /config/* - Pipeline configuration
+ * - /api/jobs/*    - Job management (create, poll, cancel, results, classification)
+ * - /api/storage/* - File upload/list/delete
  */
 
 // FastAPI backend URL - direct calls, no proxy
@@ -73,6 +72,9 @@ export const api = {
         create: () => `${getFastApiUrl()}/api/jobs/`,
         cancel: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}/cancel`,
         results: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}/results`,
+        images: (jobId: string, sha: string) => `${getFastApiUrl()}/api/jobs/${jobId}/images/${sha}`,
+        download: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}/download`,
+        delete: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}`,
         classification: {
             get: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}/classification`,
             submit: (jobId: string) => `${getFastApiUrl()}/api/jobs/${jobId}/classification`,
@@ -80,16 +82,11 @@ export const api = {
         },
     },
 
-    // Runs API (FastAPI - legacy)
-    runs: {
-        list: () => `${getFastApiUrl()}/runs/`,
-        get: (runId: string) => `${getFastApiUrl()}/runs/${runId}`,
-    },
-
-    // Config API (FastAPI)
-    config: {
-        get: () => `${getFastApiUrl()}/config/`,
-        update: () => `${getFastApiUrl()}/config/`,
+    // Storage API (FastAPI)
+    storage: {
+        upload: () => `${getFastApiUrl()}/api/storage/upload`,
+        files: () => `${getFastApiUrl()}/api/storage/files`,
+        delete: (filename: string) => `${getFastApiUrl()}/api/storage/files/${encodeURIComponent(filename)}`,
     },
 
     // Health checks
