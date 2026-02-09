@@ -12,6 +12,7 @@ const log = createLogger('Dashboard')
 interface Run {
   run_id: string
   doc_id: string
+  doc_name?: string
   status?: string
   pipeline_status?: string
   message?: string
@@ -64,23 +65,32 @@ export default function DashboardPage() {
     return ['completed', 'failed', 'cancelled', 'classification_complete'].includes(status || '')
   }
 
-  // Fetch initial jobs from v4 Jobs API
+  // Fetch initial jobs from v4 Jobs API and auto-poll any active ones
   useEffect(() => {
-    // v4: Use centralized API config - direct call to FastAPI
     fetch(api.jobs.list(10))
       .then(r => r.ok ? r.json() : [])
       .then((jobs: JobPublic[]) => {
-        // Convert v4 JobPublic to recentRuns format
         const runs = jobs.map(job => ({
           run_id: job.id,
-          doc_id: job.id,
+          doc_id: job.doc_name || job.id,
           doc_name: job.doc_name,
           status: job.status,
           pipeline_status: job.status,
           progress: job.progress_percent,
+          message: job.message,
           created_at: job.created_at,
         }))
         setRecentRuns(runs.slice(0, 5))
+
+        // Auto-poll any jobs that are still active
+        const activeJobIds = jobs
+          .filter(job => !isTerminalStatus(job.status))
+          .map(job => job.id)
+        if (activeJobIds.length > 0) {
+          log.debug(`Auto-polling ${activeJobIds.length} active jobs on load`)
+          setV4JobIds(prev => [...new Set([...prev, ...activeJobIds])])
+          setIsPolling(true)
+        }
       })
       .catch(() => { })
   }, [])
@@ -114,6 +124,8 @@ export default function DashboardPage() {
             run.run_id === jobId
               ? {
                 ...run,
+                doc_id: job.doc_name || run.doc_id,
+                doc_name: job.doc_name || run.doc_name,
                 status: job.status,
                 pipeline_status: job.status,
                 progress: job.progress_percent,
@@ -215,7 +227,8 @@ export default function DashboardPage() {
         setV4Jobs(prev => [job, ...prev].slice(0, 5))
         setRecentRuns(prev => [{
           run_id: job.id,
-          doc_id: job.doc_name,
+          doc_id: job.doc_name || file.name,
+          doc_name: job.doc_name || file.name,
           status: job.status,
           pipeline_status: job.status,
           progress: job.progress_percent,
@@ -287,7 +300,8 @@ export default function DashboardPage() {
         setV4Jobs(prev => [job, ...prev].slice(0, 5))
         setRecentRuns(prev => [{
           run_id: job.id,
-          doc_id: file.name,
+          doc_id: job.doc_name || file.name,
+          doc_name: job.doc_name || file.name,
           status: job.status,
           pipeline_status: job.status,
           progress: job.progress_percent,
@@ -478,8 +492,8 @@ export default function DashboardPage() {
                 {recentRuns.map((run) => (
                   <tr key={run.run_id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-2.5">
-                      <span className="text-sm text-gray-900 truncate max-w-[200px] block" title={run.doc_id || run.run_id}>
-                        {run.doc_id || "-"}
+                      <span className="text-sm text-gray-900 truncate max-w-[200px] block" title={run.doc_name || run.doc_id || run.run_id}>
+                        {run.doc_name || run.doc_id || "-"}
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
