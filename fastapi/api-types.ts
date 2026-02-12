@@ -101,10 +101,17 @@ export interface FileInfo {
 
 export interface ClassificationCrop {
   sha: string
-  class_name: 'window' | 'door' | 'unknown'
+  class_name: 'window' | 'door' | 'unknown' | 'reject'
   confidence: number
   image_path: string | null
   page_id: string | null
+  metadata?: {
+    ai_sam_class?: string
+    csv_table_type?: string
+    csv_row_class?: string
+    class_override_source?: string
+    crop_relpath?: string
+  }
 }
 
 export interface ClassificationQueue {

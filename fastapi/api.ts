@@ -94,7 +94,7 @@ export function findIntegrationJsonUrl(manifest: BlobManifest): string | null {
 
 export interface PipelineStatus {
   run_id: string
-  status: 'pending' | 'running' | 'completed' | 'classification_complete' | 'failed' | 'cancelled'
+  status: 'pending' | 'downloading' | 'running' | 'completed' | 'classification_pending' | 'classification_complete' | 'uploading' | 'failed' | 'cancelled' | 'cancellation_requested'
   message: string
   progress?: {
     percent_overall: number
@@ -114,6 +114,13 @@ export interface ClassificationRequest {
     confidence: number
     image_path: string | null
     page_id: string | null
+    metadata?: {
+      ai_sam_class?: string
+      csv_table_type?: string
+      csv_row_class?: string
+      class_override_source?: string
+      crop_relpath?: string
+    }
   }>
   total: number
   reviewed: number
@@ -245,11 +252,9 @@ class ApiClient {
     rows: Record<string, string>[]
     metadata: { rowCount: number; columnCount: number }
   }> {
-    // BLOB MODE: fetch CSV directly from blob via manifest
-    if (isBlobMode() && manifestUrl) {
-      return this.getRunCsvFromBlob(manifestUrl)
-    }
-    // Local dev: Call FastAPI Jobs endpoint
+    // Always use the FastAPI Jobs API endpoint.
+    // The server handles blob manifest resolution, per-table grouping,
+    // and filesystem fallback — no need to duplicate that logic client-side.
     return this.jobsRequest(`/${runId}/csv`)
   }
 
@@ -392,6 +397,7 @@ class ApiClient {
         confidence: crop.confidence,
         image_path: crop.image_path,
         page_id: crop.page_id,
+        metadata: crop.metadata,
       })),
       total: queue.total,
       reviewed: queue.reviewed,
@@ -416,12 +422,11 @@ class ApiClient {
   }
 
   async getResults(runId: string, manifestUrl?: string | null): Promise<PipelineResults> {
-    // BLOB MODE: fetch results directly from manifest + integration JSON
-    if (isBlobMode() && manifestUrl) {
-      return this.getResultsFromBlob(manifestUrl)
-    }
-
-    // v4: Call the Jobs API results endpoint
+    // Always use the Jobs API endpoint.
+    // The server correctly handles both blob (manifest URLs) and local
+    // (filesystem) modes, including page/figure/table extraction.
+    // Blob-direct client-side parsing (getResultsFromBlob) had bugs with
+    // page image patterns and missing per-table CSV support.
     const results = await this.jobsRequest<{
       run_id: string
       doc_id: string
@@ -470,6 +475,22 @@ class ApiClient {
   }
 
   /**
+   * Fetch the integration document JSON (products, generalInfo, etc.).
+   * - Blob mode: fetch from manifest integration JSON URL
+   * - Local mode: try /api/jobs/{id}/integration endpoint
+   */
+  async getDocumentJson(runId: string, manifestUrl?: string | null): Promise<Record<string, unknown> | null> {
+    // Always use the Jobs API integration endpoint.
+    // Server handles blob/local manifest resolution.
+    try {
+      return await this.jobsRequest<Record<string, unknown>>(`/${runId}/integration`)
+    } catch {
+      // Endpoint may not exist, return null
+      return null
+    }
+  }
+
+  /**
    * Blob-native results fetching.
    * Fetches manifest → integration JSON → builds PipelineResults from blob data.
    */
@@ -488,6 +509,22 @@ class ApiClient {
 
     // Extract products from integration JSON
     const products = (integrationData.products || []) as Array<Record<string, unknown>>
+
+    // Build pages array from manifest images/*.png keys
+    const pages: PipelineResults['pages'] = []
+    const pagePattern = /^images\/page[_-]?(\d+)\.png$/i
+    for (const [key, url] of Object.entries(manifest.files)) {
+      const match = key.match(pagePattern)
+      if (match) {
+        const pageNum = parseInt(match[1], 10)
+        pages.push({
+          page_id: `page_${pageNum}`,
+          page_number: pageNum,
+          image_path: url,
+        })
+      }
+    }
+    pages.sort((a, b) => (a.page_number ?? 0) - (b.page_number ?? 0))
 
     // Build figures from products that have figure_sha8
     const figures: PipelineResults['figures'] = products
@@ -534,6 +571,7 @@ class ApiClient {
       results: integrationData,
       output_dir: '',
       figures,
+      pages,
       tables,
     }
   }

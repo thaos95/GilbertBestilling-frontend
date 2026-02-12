@@ -579,11 +579,14 @@ export default function DashboardPage() {
 function StatusBadge({ status }: { status?: string }) {
   const configs: Record<string, { bg: string; text: string; label: string; pulsing?: boolean }> = {
     pending: { bg: "bg-gray-100", text: "text-gray-600", label: "Pending" },
+    downloading: { bg: "bg-blue-50", text: "text-blue-700", label: "Downloading", pulsing: true },
     running: { bg: "bg-blue-50", text: "text-blue-700", label: "Running", pulsing: true },
     classification_pending: { bg: "bg-amber-50", text: "text-amber-700", label: "Classification needed" },
     classification_complete: { bg: "bg-emerald-50", text: "text-emerald-700", label: "Classification done" },
+    uploading: { bg: "bg-indigo-50", text: "text-indigo-700", label: "Uploading", pulsing: true },
     completed: { bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
     failed: { bg: "bg-red-50", text: "text-red-700", label: "Failed" },
+    cancellation_requested: { bg: "bg-gray-100", text: "text-gray-600", label: "Cancelling", pulsing: true },
     cancelled: { bg: "bg-gray-100", text: "text-gray-600", label: "Cancelled" },
     unknown: { bg: "bg-gray-100", text: "text-gray-600", label: "Unknown" },
   }

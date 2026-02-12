@@ -125,6 +125,7 @@ export default function RunsPage() {
       downloading: { bg: "bg-blue-50", text: "text-blue-700", label: "Downloading" },
       running: { bg: "bg-blue-50", text: "text-blue-700", label: "Running" },
       classification_pending: { bg: "bg-amber-50", text: "text-amber-700", label: "Classification needed" },
+      classification_complete: { bg: "bg-emerald-50", text: "text-emerald-600", label: "Classification done" },
       uploading: { bg: "bg-blue-50", text: "text-blue-700", label: "Uploading" },
       completed: { bg: "bg-emerald-50", text: "text-emerald-700", label: "Completed" },
       failed: { bg: "bg-red-50", text: "text-red-700", label: "Failed" },
@@ -150,8 +151,8 @@ export default function RunsPage() {
       )
     }
 
-    // Completed - show View button
-    if (status === "completed") {
+    // Completed or classification_complete - show View button
+    if (status === "completed" || status === "classification_complete") {
       return (
         <Link
           href={`/results/${job.id}`}
