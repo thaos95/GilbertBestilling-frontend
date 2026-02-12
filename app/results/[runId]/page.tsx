@@ -444,61 +444,55 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
         <nav className="flex gap-1">
           <button
             onClick={() => setActiveTab("pages")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "pages"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "pages"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Pages ({results?.pages?.length || 0})
           </button>
           <button
             onClick={() => setActiveTab("figures")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "figures"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "figures"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Figures ({(results?.figures || []).filter(fig => fig.class_name !== "reject").length || 0})
           </button>
           <button
             onClick={() => setActiveTab("tables")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "tables"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "tables"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Tables
           </button>
           <button
             onClick={() => setActiveTab("csv")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "csv"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "csv"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             CSV
           </button>
           <button
             onClick={() => setActiveTab("pivoted")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "pivoted"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "pivoted"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             Pivoted View
           </button>
           <button
             onClick={() => setActiveTab("json")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${
-              activeTab === "json"
+            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "json"
                 ? "border-blue-500 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
+              }`}
           >
             {isJsonReady ? 'JSON' : (
               <span className="inline-flex items-center gap-1.5">
@@ -841,11 +835,10 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
                                     data-sha8={sha8}
                                     data-index={idx}
                                     onMouseEnter={() => setActiveProductIndex(idx)}
-                                    className={`border rounded-md p-3 bg-white ${
-                                      idx === currentProductIndex
+                                    className={`border rounded-md p-3 bg-white ${idx === currentProductIndex
                                         ? "border-blue-300 shadow-sm"
                                         : "border-slate-200"
-                                    }`}
+                                      }`}
                                   >
                                     <div className="flex items-center justify-between mb-2">
                                       <span className="text-xs font-medium text-slate-600">

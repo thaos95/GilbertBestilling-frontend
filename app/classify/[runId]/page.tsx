@@ -344,11 +344,10 @@ export default function ClassifyPage({ params }: { params: Promise<{ runId: stri
                     <button
                       key={option.value}
                       onClick={() => handleClassification(currentCrop.sha, option.value)}
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-left font-medium transition-colors ${
-                        classifications[currentCrop.sha] === option.value
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-left font-medium transition-colors ${classifications[currentCrop.sha] === option.value
                           ? "border-gray-800 bg-gray-50 text-gray-900"
                           : "border-gray-200 hover:border-gray-300 text-gray-700"
-                      }`}
+                        }`}
                     >
                       {option.label}
                     </button>
@@ -356,11 +355,10 @@ export default function ClassifyPage({ params }: { params: Promise<{ runId: stri
                   {/* Reject button */}
                   <button
                     onClick={() => handleClassification(currentCrop.sha, "reject")}
-                    className={`w-full px-4 py-3 rounded-lg border-2 text-left font-medium transition-colors ${
-                      classifications[currentCrop.sha] === "reject"
+                    className={`w-full px-4 py-3 rounded-lg border-2 text-left font-medium transition-colors ${classifications[currentCrop.sha] === "reject"
                         ? "border-red-500 bg-red-50 text-red-700"
                         : "border-gray-200 hover:border-red-300 text-gray-700"
-                    }`}
+                      }`}
                   >
                     Reject
                   </button>
