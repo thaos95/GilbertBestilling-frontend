@@ -6,7 +6,6 @@ import { usePipelineStage } from "@/hooks/usePipelineStage"
 import { useCsvData } from "@/hooks/useCsvData"
 import { PipelineStageIndicator, JsonPendingState } from "@/components/pipeline"
 import { CsvTableView } from "@/components/CsvTableView"
-import { PivotedCsvView } from "@/components/PivotedCsvView"
 import { FigureCsvIntegrityBadge } from "@/components/FigureCsvIntegrityBadge"
 import { calculatePageIntegrity, type PageIntegrity } from "@/utils/figureCsvIntegrity"
 import {
@@ -112,7 +111,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
   const [documentJson, setDocumentJson] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [jsonLoading, setJsonLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<"pages" | "figures" | "tables" | "csv" | "pivoted" | "json">("pages")
+  const [activeTab, setActiveTab] = useState<"pages" | "figures" | "tables" | "csv" | "json">("pages")
   const prefetchedImagesRef = useRef<Set<string>>(new Set())
 
   // JSON product viewer state
@@ -479,15 +478,6 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
             CSV
           </button>
           <button
-            onClick={() => setActiveTab("pivoted")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "pivoted"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-          >
-            Pivoted View
-          </button>
-          <button
             onClick={() => setActiveTab("json")}
             className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "json"
                 ? "border-blue-500 text-blue-700"
@@ -745,13 +735,6 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
               </div>
             </div>
           </div>
-
-          {/* Pivoted View Tab */}
-          {activeTab === "pivoted" && (
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <PivotedCsvView runId={runId} manifestUrl={manifestUrl} manifest={manifest} />
-            </div>
-          )}
 
           {/* JSON Tab - Product viewer with figure crop sidebar */}
           {activeTab === "json" && (

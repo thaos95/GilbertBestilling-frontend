@@ -94,7 +94,7 @@ export function findIntegrationJsonUrl(manifest: BlobManifest): string | null {
 
 export interface PipelineStatus {
   run_id: string
-  status: 'pending' | 'running' | 'completed' | 'classification_complete' | 'failed' | 'cancelled'
+  status: 'pending' | 'downloading' | 'running' | 'completed' | 'classification_pending' | 'classification_complete' | 'uploading' | 'failed' | 'cancelled' | 'cancellation_requested'
   message: string
   progress?: {
     percent_overall: number
@@ -527,6 +527,22 @@ class ApiClient {
     // Extract products from integration JSON
     const products = (integrationData.products || []) as Array<Record<string, unknown>>
 
+    // Build pages array from manifest images/*.png keys
+    const pages: PipelineResults['pages'] = []
+    const pagePattern = /^images\/page[_-]?(\d+)\.png$/i
+    for (const [key, url] of Object.entries(manifest.files)) {
+      const match = key.match(pagePattern)
+      if (match) {
+        const pageNum = parseInt(match[1], 10)
+        pages.push({
+          page_id: `page_${pageNum}`,
+          page_number: pageNum,
+          image_path: url,
+        })
+      }
+    }
+    pages.sort((a, b) => (a.page_number ?? 0) - (b.page_number ?? 0))
+
     // Build figures from products that have figure_sha8
     const figures: PipelineResults['figures'] = products
       .filter(p => p.figure_sha8)
@@ -572,6 +588,7 @@ class ApiClient {
       results: integrationData,
       output_dir: '',
       figures,
+      pages,
       tables,
     }
   }
