@@ -252,11 +252,9 @@ class ApiClient {
     rows: Record<string, string>[]
     metadata: { rowCount: number; columnCount: number }
   }> {
-    // BLOB MODE: fetch CSV directly from blob via manifest
-    if (isBlobMode() && manifestUrl) {
-      return this.getRunCsvFromBlob(manifestUrl)
-    }
-    // Local dev: Call FastAPI Jobs endpoint
+    // Always use the FastAPI Jobs API endpoint.
+    // The server handles blob manifest resolution, per-table grouping,
+    // and filesystem fallback — no need to duplicate that logic client-side.
     return this.jobsRequest(`/${runId}/csv`)
   }
 
@@ -424,12 +422,11 @@ class ApiClient {
   }
 
   async getResults(runId: string, manifestUrl?: string | null): Promise<PipelineResults> {
-    // BLOB MODE: fetch results directly from manifest + integration JSON
-    if (isBlobMode() && manifestUrl) {
-      return this.getResultsFromBlob(manifestUrl)
-    }
-
-    // v4: Call the Jobs API results endpoint
+    // Always use the Jobs API endpoint.
+    // The server correctly handles both blob (manifest URLs) and local
+    // (filesystem) modes, including page/figure/table extraction.
+    // Blob-direct client-side parsing (getResultsFromBlob) had bugs with
+    // page image patterns and missing per-table CSV support.
     const results = await this.jobsRequest<{
       run_id: string
       doc_id: string
@@ -483,22 +480,8 @@ class ApiClient {
    * - Local mode: try /api/jobs/{id}/integration endpoint
    */
   async getDocumentJson(runId: string, manifestUrl?: string | null): Promise<Record<string, unknown> | null> {
-    // Blob mode: fetch from manifest
-    if (isBlobMode() && manifestUrl) {
-      try {
-        const manifest = await fetchBlobManifest(manifestUrl)
-        const jsonUrl = findIntegrationJsonUrl(manifest)
-        if (jsonUrl) {
-          const resp = await fetch(jsonUrl)
-          if (resp.ok) return resp.json()
-        }
-      } catch {
-        // Fall through
-      }
-      return null
-    }
-
-    // Local mode: try the integration endpoint on the jobs API
+    // Always use the Jobs API integration endpoint.
+    // Server handles blob/local manifest resolution.
     try {
       return await this.jobsRequest<Record<string, unknown>>(`/${runId}/integration`)
     } catch {

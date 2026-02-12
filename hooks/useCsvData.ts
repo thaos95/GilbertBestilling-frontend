@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { api, ApiRequestError, isBlobMode } from '@/fastapi/api'
+import { api, ApiRequestError } from '@/fastapi/api'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('csvData')
