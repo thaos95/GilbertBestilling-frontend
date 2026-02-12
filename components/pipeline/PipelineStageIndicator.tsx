@@ -105,7 +105,18 @@ export function PipelineStageIndicator({
   const actualLabel = stageLabel || derivedLabel
   const actualProgress = stageProgress || derivedProgress
 
-  const currentIndex = STAGE_CONFIG.findIndex(s => s.key === actualStage)
+  // Map downloading/uploading to nearest visual stage
+  // downloading = before detection (all upcoming), uploading = past integration
+  const VISUAL_STAGE_MAP: Record<string, string> = {
+    downloading: '__before_all__',
+    uploading: '__after_integration__',
+  }
+  const mappedStage = VISUAL_STAGE_MAP[actualStage] || actualStage
+  const currentIndex = mappedStage === '__before_all__'
+    ? -1
+    : mappedStage === '__after_integration__'
+      ? STAGE_CONFIG.findIndex(s => s.key === 'integration') + 0.5
+      : STAGE_CONFIG.findIndex(s => s.key === mappedStage)
 
   return (
     <div className={`w-full ${className}`}>
