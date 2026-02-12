@@ -86,7 +86,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
   const [manifest, setManifest] = useState<BlobManifest | null>(null)
 
   // CSV data (supports blob mode via manifestUrl)
-  const { tableData: csvTableData } = useCsvData(runId, manifestUrl)
+  const { tableData: csvTableData, refetch: refetchCsv } = useCsvData(runId, manifestUrl)
 
   // Results state
   const [results, setResults] = useState<PipelineResults | null>(null)
@@ -234,6 +234,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
 
   // Fetch results when job status changes (polling-driven)
   const lastResultsFetchRef = useRef(0)
+  const csvRefetchedOnCompleteRef = useRef(false)
   useEffect(() => {
     if (!runId || !job) return
 
@@ -243,6 +244,12 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (canFetch && ((!results && !loading) || job.status === 'completed')) {
       lastResultsFetchRef.current = now
       fetchResults()
+    }
+
+    // Re-fetch CSV data when job completes (may have failed earlier with 404)
+    if (job.status === 'completed' && !csvTableData && !csvRefetchedOnCompleteRef.current) {
+      csvRefetchedOnCompleteRef.current = true
+      refetchCsv()
     }
 
     if (job.status === 'completed' && (activeTab === 'json' || (documentJson && '_pending' in documentJson))) {
