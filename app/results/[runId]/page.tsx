@@ -198,7 +198,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (!results) setLoading(true)
     try {
       log.debug(`Fetching results for ${runId}`)
-      const data = await api.getResults(runId, manifestUrl)
+      const data = await api.getResults(runId)
       setResults(data)
     } catch (err) {
       log.warn("Results not ready yet", { error: err instanceof Error ? err.message : String(err) })
@@ -218,7 +218,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     lastJsonFetchRef.current = now
     setJsonLoading(true)
     try {
-      const data = await api.getDocumentJson(runId, manifestUrl)
+      const data = await api.getDocumentJson(runId)
       if (data) {
         setDocumentJson(data)
       } else {
