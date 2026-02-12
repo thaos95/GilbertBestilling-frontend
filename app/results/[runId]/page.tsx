@@ -205,7 +205,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     } finally {
       setLoading(false)
     }
-  }, [runId, results, manifestUrl])
+  }, [runId, results])
 
   // Fetch document integration JSON
   const documentFetchedRef = useRef(false)
@@ -221,6 +221,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
       const data = await api.getDocumentJson(runId)
       if (data) {
         setDocumentJson(data)
+        documentFetchedRef.current = true
       } else {
         documentFetchedRef.current = false
       }
@@ -230,7 +231,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     } finally {
       setJsonLoading(false)
     }
-  }, [runId, jsonLoading, manifestUrl])
+  }, [runId, jsonLoading])
 
   // Fetch results when job status changes (polling-driven)
   const lastResultsFetchRef = useRef(0)
@@ -266,7 +267,6 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
   // Fetch document JSON when JSON tab selected
   useEffect(() => {
     if (activeTab === "json" && !documentJson && !documentFetchedRef.current) {
-      documentFetchedRef.current = true
       fetchDocumentJson()
     }
   }, [activeTab, documentJson, fetchDocumentJson])
@@ -334,10 +334,26 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (jsonLoading) return
     const timeout = setTimeout(() => {
       documentFetchedRef.current = false
+      lastJsonFetchRef.current = 0
       fetchDocumentJson()
     }, 3000)
     return () => clearTimeout(timeout)
   }, [activeTab, documentJson, jsonLoading, fetchDocumentJson])
+
+  // Retry JSON fetch when null and job is completed (handles race condition
+  // where integration file wasn't ready on first fetch attempt)
+  useEffect(() => {
+    if (activeTab !== "json") return
+    if (documentJson) return // already loaded
+    if (jsonLoading) return
+    if (!isTerminal) return // only retry for completed jobs
+    const timeout = setTimeout(() => {
+      documentFetchedRef.current = false
+      lastJsonFetchRef.current = 0
+      fetchDocumentJson()
+    }, 2000)
+    return () => clearTimeout(timeout)
+  }, [activeTab, documentJson, jsonLoading, isTerminal, fetchDocumentJson])
 
   // Failed state
   if (job?.status === "failed") {
