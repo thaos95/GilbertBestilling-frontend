@@ -114,6 +114,13 @@ export interface ClassificationRequest {
     confidence: number
     image_path: string | null
     page_id: string | null
+    metadata?: {
+      ai_sam_class?: string
+      csv_table_type?: string
+      csv_row_class?: string
+      class_override_source?: string
+      crop_relpath?: string
+    }
   }>
   total: number
   reviewed: number
@@ -392,6 +399,7 @@ class ApiClient {
         confidence: crop.confidence,
         image_path: crop.image_path,
         page_id: crop.page_id,
+        metadata: crop.metadata,
       })),
       total: queue.total,
       reviewed: queue.reviewed,
@@ -467,6 +475,36 @@ class ApiClient {
       tables: results.tables,
       markdown: results.markdown,
     } as PipelineResults
+  }
+
+  /**
+   * Fetch the integration document JSON (products, generalInfo, etc.).
+   * - Blob mode: fetch from manifest integration JSON URL
+   * - Local mode: try /api/jobs/{id}/integration endpoint
+   */
+  async getDocumentJson(runId: string, manifestUrl?: string | null): Promise<Record<string, unknown> | null> {
+    // Blob mode: fetch from manifest
+    if (isBlobMode() && manifestUrl) {
+      try {
+        const manifest = await fetchBlobManifest(manifestUrl)
+        const jsonUrl = findIntegrationJsonUrl(manifest)
+        if (jsonUrl) {
+          const resp = await fetch(jsonUrl)
+          if (resp.ok) return resp.json()
+        }
+      } catch {
+        // Fall through
+      }
+      return null
+    }
+
+    // Local mode: try the integration endpoint on the jobs API
+    try {
+      return await this.jobsRequest<Record<string, unknown>>(`/${runId}/integration`)
+    } catch {
+      // Endpoint may not exist, return null
+      return null
+    }
   }
 
   /**
