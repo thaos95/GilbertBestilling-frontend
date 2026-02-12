@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { api, ApiRequestError, isBlobMode } from '@/fastapi/api'
+import { api, ApiRequestError } from '@/fastapi/api'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('csvData')
@@ -50,8 +50,8 @@ export function useCsvData(runId: string, manifestUrl?: string | null): UseCsvDa
     setError(null)
 
     try {
-      // Pass manifestUrl so api.getRunCsv can use blob mode
-      const csvData = await api.getRunCsv(runId, manifestUrl)
+      // Server handles blob/local resolution
+      const csvData = await api.getRunCsv(runId)
 
       // Check if new per-table format or legacy combined format
       if ('tables' in csvData && csvData.tables) {

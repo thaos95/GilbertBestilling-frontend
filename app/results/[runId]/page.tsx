@@ -6,7 +6,6 @@ import { usePipelineStage } from "@/hooks/usePipelineStage"
 import { useCsvData } from "@/hooks/useCsvData"
 import { PipelineStageIndicator, JsonPendingState } from "@/components/pipeline"
 import { CsvTableView } from "@/components/CsvTableView"
-import { PivotedCsvView } from "@/components/PivotedCsvView"
 import { FigureCsvIntegrityBadge } from "@/components/FigureCsvIntegrityBadge"
 import { calculatePageIntegrity, type PageIntegrity } from "@/utils/figureCsvIntegrity"
 import {
@@ -73,24 +72,6 @@ function prefetchFigureImages(
   }
 }
 
-// Simple markdown table parser
-function parseMarkdownTable(markdown: string): { headers: string[]; rows: string[][] } | null {
-  const lines = markdown
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('<!--'))
-  if (lines.length < 2) return null
-
-  const headers = lines[0].split('|').map(h => h.trim()).filter(h => h)
-  const separator = lines[1]
-  if (!separator.includes('---')) return null
-
-  const rows = lines.slice(2).map(line =>
-    line.split('|').map(cell => cell.trim()).filter((_, i) => i < headers.length)
-  )
-  return { headers, rows }
-}
-
 export default function ResultsPage({ params }: { params: Promise<{ runId: string }> }) {
   const resolvedParams = use(params)
   const runId = resolvedParams.runId
@@ -105,14 +86,14 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
   const [manifest, setManifest] = useState<BlobManifest | null>(null)
 
   // CSV data (supports blob mode via manifestUrl)
-  const { tableData: csvTableData } = useCsvData(runId, manifestUrl)
+  const { tableData: csvTableData, refetch: refetchCsv } = useCsvData(runId, manifestUrl)
 
   // Results state
   const [results, setResults] = useState<PipelineResults | null>(null)
   const [documentJson, setDocumentJson] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [jsonLoading, setJsonLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<"pages" | "figures" | "tables" | "csv" | "pivoted" | "json">("pages")
+  const [activeTab, setActiveTab] = useState<"pages" | "figures" | "tables" | "json">("pages")
   const prefetchedImagesRef = useRef<Set<string>>(new Set())
 
   // JSON product viewer state
@@ -217,7 +198,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (!results) setLoading(true)
     try {
       log.debug(`Fetching results for ${runId}`)
-      const data = await api.getResults(runId, manifestUrl)
+      const data = await api.getResults(runId)
       setResults(data)
     } catch (err) {
       log.warn("Results not ready yet", { error: err instanceof Error ? err.message : String(err) })
@@ -237,7 +218,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     lastJsonFetchRef.current = now
     setJsonLoading(true)
     try {
-      const data = await api.getDocumentJson(runId, manifestUrl)
+      const data = await api.getDocumentJson(runId)
       if (data) {
         setDocumentJson(data)
       } else {
@@ -253,6 +234,7 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
 
   // Fetch results when job status changes (polling-driven)
   const lastResultsFetchRef = useRef(0)
+  const csvRefetchedOnCompleteRef = useRef(false)
   useEffect(() => {
     if (!runId || !job) return
 
@@ -262,6 +244,12 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
     if (canFetch && ((!results && !loading) || job.status === 'completed')) {
       lastResultsFetchRef.current = now
       fetchResults()
+    }
+
+    // Re-fetch CSV data when job completes (may have failed earlier with 404)
+    if (job.status === 'completed' && !csvTableData && !csvRefetchedOnCompleteRef.current) {
+      csvRefetchedOnCompleteRef.current = true
+      refetchCsv()
     }
 
     if (job.status === 'completed' && (activeTab === 'json' || (documentJson && '_pending' in documentJson))) {
@@ -445,8 +433,8 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
           <button
             onClick={() => setActiveTab("pages")}
             className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "pages"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+              ? "border-blue-500 text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
           >
             Pages ({results?.pages?.length || 0})
@@ -454,8 +442,8 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
           <button
             onClick={() => setActiveTab("figures")}
             className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "figures"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+              ? "border-blue-500 text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
           >
             Figures ({(results?.figures || []).filter(fig => fig.class_name !== "reject").length || 0})
@@ -463,35 +451,17 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
           <button
             onClick={() => setActiveTab("tables")}
             className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "tables"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+              ? "border-blue-500 text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
           >
-            Tables
-          </button>
-          <button
-            onClick={() => setActiveTab("csv")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "csv"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-          >
-            CSV
-          </button>
-          <button
-            onClick={() => setActiveTab("pivoted")}
-            className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "pivoted"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-          >
-            Pivoted View
+            Tables ({csvTableData ? Object.keys(csvTableData).length : 0})
           </button>
           <button
             onClick={() => setActiveTab("json")}
             className={`px-4 py-2 border-b-2 text-xs font-medium transition-colors duration-150 ${activeTab === "json"
-                ? "border-blue-500 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
+              ? "border-blue-500 text-blue-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
           >
             {isJsonReady ? 'JSON' : (
@@ -674,66 +644,8 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
             </div>
           )}
 
-          {/* Tables Tab - markdown parsed to HTML */}
-          {activeTab === "tables" && (
-            <div className="space-y-6">
-              {results?.tables?.map((table) => {
-                const parsed = parseMarkdownTable(table.markdown)
-                return (
-                  <div
-                    key={table.sha}
-                    className="bg-white rounded-md border border-slate-200 overflow-hidden"
-                  >
-                    <div className="px-4 py-2 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                      <span className="text-sm font-medium text-slate-900 capitalize">
-                        {table.table_type || 'Table'} {typeof table.table_index === 'number' ? table.table_index + 1 : ''}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {typeof table.page === 'number' && integrityByPage[table.page] && (
-                          <FigureCsvIntegrityBadge pageIntegrity={integrityByPage[table.page]} />
-                        )}
-                        <span className="text-xs text-slate-500 font-mono">
-                          Page {table.page || "?"} · {table.sha.slice(0, 6)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                      {parsed ? (
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-slate-200">
-                              {parsed.headers.map((header, i) => (
-                                <th key={i} className="px-4 py-2 text-left text-slate-700 font-medium bg-slate-50">
-                                  {header}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {parsed.rows.map((row, i) => (
-                              <tr key={i} className="border-b border-slate-100 last:border-0">
-                                {row.map((cell, j) => (
-                                  <td key={j} className="px-4 py-2 text-slate-900">{cell}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <pre className="text-xs bg-slate-50 p-4">{table.markdown}</pre>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-              {(!results?.tables?.length) && (
-                <div className="text-center py-12 text-slate-500">No tables found</div>
-              )}
-            </div>
-          )}
-
-          {/* CSV Tab (full-width) */}
-          <div className={activeTab === "csv" ? "block" : "hidden"}>
+          {/* Tables Tab — CsvTableView (matches origin/main) */}
+          <div className={activeTab === "tables" ? "block" : "hidden"}>
             <div className="w-screen relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw]">
               <div className="mx-auto w-full max-w-[1600px] px-6">
                 <CsvTableView
@@ -745,13 +657,6 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
               </div>
             </div>
           </div>
-
-          {/* Pivoted View Tab */}
-          {activeTab === "pivoted" && (
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              <PivotedCsvView runId={runId} manifestUrl={manifestUrl} manifest={manifest} />
-            </div>
-          )}
 
           {/* JSON Tab - Product viewer with figure crop sidebar */}
           {activeTab === "json" && (
@@ -836,8 +741,8 @@ export default function ResultsPage({ params }: { params: Promise<{ runId: strin
                                     data-index={idx}
                                     onMouseEnter={() => setActiveProductIndex(idx)}
                                     className={`border rounded-md p-3 bg-white ${idx === currentProductIndex
-                                        ? "border-blue-300 shadow-sm"
-                                        : "border-slate-200"
+                                      ? "border-blue-300 shadow-sm"
+                                      : "border-slate-200"
                                       }`}
                                   >
                                     <div className="flex items-center justify-between mb-2">
